@@ -1,0 +1,123 @@
+#include <Arduino.h>
+#include <IRremote.h>
+#include <Wire.h>
+#include "Adafruit_VL53L0X.h"
+
+#define VL_ADDRESS 0X32
+#define VL_PIN 19 
+#define IR_RECEIVE_PIN 15
+#define IR_BUTTON_2 1
+#define IR_BUTTON_3 2
+#define Ain1 27
+#define Ain2 26
+#define Bin1 14
+#define Bin2 12
+#pragma once
+
+Adafruit_VL53L0X VL = Adafruit_VL53L0X();
+VL53L0X_RangingMeasurementData_t measure;
+
+long rtime, stime;
+int rodando = 0;
+
+void setup() {
+
+  pinMode(Ain1,OUTPUT);
+  pinMode(Ain2,OUTPUT);
+  
+  pinMode(Bin1,OUTPUT);
+  pinMode(Bin2,OUTPUT);
+  
+  pinMode(VL_PIN, OUTPUT);
+
+  IrReceiver.begin(IR_RECEIVE_PIN);
+  
+  digitalWrite(Ain1, LOW);
+  digitalWrite(Ain2, LOW);
+  digitalWrite(Bin1, LOW);
+  digitalWrite(Bin2, LOW);
+  digitalWrite(VL_PIN, HIGH);
+  
+  Serial.begin(9600);
+  Wire.begin (21, 22);  //sda, scl  
+ 
+  while(!VL.begin(VL_ADDRESS)) {
+    Serial.println(F("Failed to boot VL53L0X"));
+  }
+  
+  // inicializacao da contagem do tempo a partir do momento que o micro é ligado, referencia fixa
+  stime = millis();
+}
+
+void loop() {
+
+  /* referencia variavel - irá pegar o instante atual e subtrair da referencia fixa
+     com base nele é possível utilizar o tempo relativo para executar ações*/ 
+  rtime = millis() - stime; 
+
+
+  if (rodando == 1) {
+    VL.rangingTest (&measure, false);
+    if(measure.RangeStatus != 4){
+      if(measure.RangeMilliMeter < 180) {
+         digitalWrite(Ain1, HIGH);
+         digitalWrite(Ain2, LOW);
+         digitalWrite(Bin1, HIGH);
+         digitalWrite(Bin2, LOW);
+         delay(10);
+         return;
+      }
+    }
+    
+    // se o tempo relativo for menor que 350 milisegundos o robo irá ir para trás
+    if (rtime < 350) {
+         digitalWrite(Ain1, HIGH);
+         digitalWrite(Ain2, LOW);
+         digitalWrite(Bin1, HIGH);
+         digitalWrite(Bin2, LOW);
+        return;    
+    }
+    // se o tempo relativo for menor que 500 milisegundos o mini-sumo começa a girar, procurando o seu oponente
+    if (rtime < 500) {
+        digitalWrite(Bin1, LOW);
+        digitalWrite(Bin2, HIGH);
+        digitalWrite(Ain1, LOW);
+        digitalWrite(Ain2, HIGH);
+        return;    
+    }
+    
+    digitalWrite(Ain1, HIGH);
+    digitalWrite(Ain2, LOW);
+    digitalWrite(Bin1, LOW);
+    digitalWrite(Bin2, HIGH);
+  }
+
+
+   if (IrReceiver.decode()) {
+      IrReceiver.resume();
+      int command = IrReceiver.decodedIRData.command;
+      
+      if (command == IR_BUTTON_2){
+        rodando = 1;
+        
+        // reseta a referencia fixa, quando o mini sumo entra em modo de combate
+        stime = millis();
+        
+        digitalWrite(Ain1, LOW);
+        digitalWrite(Ain2, HIGH);    
+        digitalWrite(Bin1, LOW);
+        digitalWrite(Bin2, HIGH);
+        //analogWrite(pwmA, 255);
+        //analogWrite(pwmB, 255);
+      }
+      else if (command == IR_BUTTON_3){
+        rodando = 0;
+        digitalWrite(Ain1, LOW);
+        digitalWrite(Ain2, LOW);    
+        digitalWrite(Bin1, LOW);
+        digitalWrite(Bin2, LOW);
+        // parar os motores
+      }
+    }
+
+}
